@@ -1,5 +1,33 @@
 import streamlit as st
 import time
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+# --- AUTO-START API SERVER ---
+# This ensures the API is running before the dashboard loads
+try:
+    from utils.api_starter import ensure_api_running
+    
+    # Start API in background (runs once per session)
+    if 'api_started' not in st.session_state:
+        with st.spinner('🚀 Starting API server...'):
+            api_running = ensure_api_running()
+            st.session_state['api_started'] = True
+            st.session_state['api_available'] = api_running
+            
+            if api_running:
+                st.success('✅ API server is ready!', icon='🚀')
+                time.sleep(1)  # Brief pause to show message
+            else:
+                st.warning('⚠️ API server not available. Some features may be limited.', icon='⚠️')
+                time.sleep(2)
+except Exception as e:
+    st.warning(f'⚠️ Could not start API: {e}', icon='⚠️')
+    st.session_state['api_available'] = False
 
 # --- 1. CONFIGURATION & SETUP ---
 st.set_page_config(
@@ -151,7 +179,7 @@ def render_hero():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         with st.container():
-            query = st.text_input("", placeholder="🔍 Enter Ticker (e.g., AAPL) to analyze immediately...", label_visibility="collapsed")
+            query = st.text_input("Stock Ticker", placeholder="🔍 Enter Ticker (e.g., AAPL) to analyze immediately...", label_visibility="collapsed")
             if query:
                 st.session_state['ticker'] = query.upper()
                 st.toast(f"Redirecting to analysis for {query.upper()}...", icon="🚀")
@@ -185,7 +213,7 @@ def render_features():
                     feature['link'], 
                     label=feature['btn_txt'], 
                     icon="👉", 
-                    use_container_width=True
+                    width='stretch'
                 )
             except Exception:
                 # Fallback if page doesn't exist yet
@@ -216,6 +244,16 @@ def render_footer():
 # --- 5. MAIN EXECUTION ---
 def main():
     inject_custom_css()
+    
+    # Show API status in sidebar
+    with st.sidebar:
+        st.markdown("### 🔌 System Status")
+        if st.session_state.get('api_available', False):
+            st.success("API Server: Online", icon="✅")
+            st.caption("http://127.0.0.1:8000")
+        else:
+            st.warning("API Server: Offline", icon="⚠️")
+            st.caption("Some features may be limited")
     
     render_hero()
     st.markdown("---") 

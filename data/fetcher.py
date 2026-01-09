@@ -14,41 +14,52 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import pipeline integration
 try:
     from data.pipeline_adapter import get_pipeline_data, is_pipeline_available
-    from data.pipeline_config import DATA_SOURCE
+    from data.pipeline_config import DATA_SOURCE, PIPELINE_API_URL
+    from data.api_client import DashboardAPIClient
     PIPELINE_AVAILABLE = True
+    API_CLIENT = DashboardAPIClient(PIPELINE_API_URL)
 except ImportError:
     PIPELINE_AVAILABLE = False
     DATA_SOURCE = 'yfinance'
+    API_CLIENT = None
 
 class DataEngine:
     @staticmethod
     def fetch_data(symbol: str, period: str = "1y", interval: str = "1d", 
-                   use_pipeline: bool = None) -> StockData:
+                   use_pipeline: bool = None, use_api: bool = True) -> StockData:
         """
         Fetches market data and calculates technical indicators.
         
         Data sources (priority order):
-        1. Pipeline data (if configured and available)
-        2. Yahoo Finance (yfinance) - fallback
+        1. API endpoints (if available and use_api=True)
+        2. Pipeline data (if configured and available)
+        3. Yahoo Finance (yfinance) - fallback
         
         Cached for 5 minutes to improve performance.
         """
         import streamlit as st
         
         @st.cache_data(ttl=300, show_spinner=False)
-        def _fetch_cached(symbol: str, period: str, interval: str, use_pipeline_flag: bool) -> dict:
-            data = DataEngine._fetch_uncached(symbol, period, interval, use_pipeline_flag)
+        def _fetch_cached(symbol: str, period: str, interval: str, use_pipeline_flag: bool, use_api_flag: bool) -> dict:
+            data = DataEngine._fetch_uncached(symbol, period, interval, use_pipeline_flag, use_api_flag)
             return data.dict()
         
         should_use_pipeline = use_pipeline if use_pipeline is not None else (DATA_SOURCE == 'pipeline')
-        data_dict = _fetch_cached(symbol, period, interval, should_use_pipeline)
+        data_dict = _fetch_cached(symbol, period, interval, should_use_pipeline, use_api)
         return StockData(**data_dict)
     
     @staticmethod
-    def _fetch_uncached(symbol: str, period: str, interval: str, use_pipeline: bool = False) -> StockData:
+    def _fetch_uncached(symbol: str, period: str, interval: str, use_pipeline: bool = False, use_api: bool = True) -> StockData:
         """Internal method to fetch data without caching"""
         
-        # Try pipeline first if configured
+        # Try API first if available and enabled
+        if use_api and API_CLIENT is not None:
+            try:
+                return DataEngine._fetch_from_api(symbol, period)
+            except Exception as e:
+                print(f"⚠️ Error fetching from API: {e}. Falling back...")
+        
+        # Try pipeline second if configured
         if use_pipeline and PIPELINE_AVAILABLE and is_pipeline_available():
             try:
                 return DataEngine._fetch_from_pipeline(symbol, period)
@@ -59,9 +70,9 @@ class DataEngine:
         return DataEngine._fetch_from_yfinance(symbol, period, interval)
     
     @staticmethod
-    def _fetch_from_pipeline(symbol: str, period: str) -> StockData:
+    def _fetch_from_api(symbol: str, period: str) -> StockData:
         """
-        Fetch data from pipeline.
+        Fetch data from API endpoints.
         
         Args:
             symbol: Stock ticker symbol
@@ -70,14 +81,38 @@ class DataEngine:
         Returns:
             StockData object
         """
-        # Convert period to date range
-        end_date = datetime.now()
+        # Convert period to days
         period_days = {
             '1d': 1, '5d': 5, '1mo': 30, '3mo': 90,
             '6mo': 180, '1y': 365, '2y': 730, '5y': 1825, 'ytd': 365, 'max': 3650
         }
-        days = period_days.get(period, 365)
-        start_date = end_date - timedelta(days=days)
+        days = period_days.get(period, 30)
+        
+        try:
+            # Use the new API endpoint
+            api_response = API_CLIENT.get_recent_data(symbol, days=days)
+            
+            # Check if API returned real data
+            if api_response.get('data') and len(api_response['data']) > 0:
+                # Process API data into StockData format
+                df = pd.DataFrame(api_response['data'])
+                # Convert to StockData (implementation depends on API response structure)
+                return DataEngine._process_api_data(df, symbol)
+            else:
+                # API returned placeholder, fall back to yfinance
+                print(f"ℹ️ API returned placeholder for {symbol}, using yfinance")
+                raise Exception("API placeholder response")
+                
+        except Exception as e:
+            print(f"⚠️ API fetch failed: {e}")
+            raise
+    
+    @staticmethod
+    def _process_api_data(df: pd.DataFrame, symbol: str) -> StockData:
+        """Process API response data into StockData format"""
+        # This is a placeholder - adjust based on actual API response structure
+        # For now, this will rarely be called since API returns placeholders
+        raise NotImplementedError("API data processing not yet implemented - using yfinance")
         
         # Get data from pipeline
         df = get_pipeline_data(

@@ -206,6 +206,23 @@ ProjD-main/
 
 ## 📚 API Endpoints
 
+**Updated:** January 9, 2026 by Aman (DE Team)  
+**Base URL:** `http://127.0.0.1:8000`  
+**Full Documentation:** See [API_ENDPOINTS.md](../API_ENDPOINTS.md) in project root
+
+### Quick Reference
+
+- `GET /health` - System health check
+- `POST /run-pipeline` - Trigger data pipeline
+- `GET /supabase/recent/{ticker}?days=30` - Recent stock data
+- `GET /supabase/ticker/{ticker}?start_date=2024-01-01&limit=100` - Ticker data with range
+- `GET /supabase/latest?limit=10` - Latest market overview
+- `GET /supabase/top-performers?top_n=10` - Top performers
+- `GET /supabase/stats/{ticker}?start_date=2024-01-01` - Statistical analysis
+- `GET /supabase/rsi-search?min_rsi=0&max_rsi=30` - RSI-based search
+
+## 📚 API Endpoints (Legacy)
+
 ### REST API
 - `GET /` - Health check
 - `POST /api/v1/backtest/run` - Run backtest (supports pipeline & CSV)

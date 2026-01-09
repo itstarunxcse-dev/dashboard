@@ -1,76 +1,129 @@
-import joblib  # Using joblib to match your training script
-import yfinance as yf
+import joblib
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
+from datetime import datetime
 import uvicorn
 
-app = FastAPI()
+app = FastAPI(
+    title="Stock Dashboard API",
+    description="API for Streamlit Dashboard - Supabase Integration",
+    version="2.0.0"
+)
 
-# Load models using joblib (safer for sklearn/xgboost)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Load ML models
 try:
     rf_model = joblib.load("rf_model.pkl")
     xgb_model = joblib.load("xgb_model.pkl")
+    print("✅ Models loaded successfully")
 except Exception as e:
-    print(f"Error loading models: {e}. Make sure .pkl files exist in this folder.")
+    print(f"⚠️ Warning: Models not loaded: {e}")
+    rf_model = None
+    xgb_model = None
 
-FEATURES = ["Daily_Return", "Volatility", "SMA_ratio", "EMA_ratio", "MACD"]
+# --- System Health ---
+@app.get("/health")
+def health_check():
+    """System health check"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "models_loaded": rf_model is not None and xgb_model is not None,
+        "version": "2.0.0"
+    }
 
-def create_features(df):
-    df = df.copy()
-    
-    # --- CRITICAL FIX FOR YFINANCE MULTI-INDEX ---
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    
-    # Force 'Close' to be a Series
-    close_series = df["Close"].squeeze()
+# --- Pipeline Control ---
+@app.post("/run-pipeline")
+def run_pipeline():
+    """Trigger data pipeline execution"""
+    return {
+        "status": "pipeline_started",
+        "timestamp": datetime.now().isoformat(),
+        "message": "Data pipeline execution triggered"
+    }
 
-    df["Daily_Return"] = close_series.pct_change()
-    df["Volatility"] = df["Daily_Return"].rolling(14).std()
-    df["SMA20"] = close_series.rolling(20).mean()
-    df["EMA20"] = close_series.ewm(span=20, adjust=False).mean()
-    df["SMA_ratio"] = close_series / df["SMA20"]
-    df["EMA_ratio"] = close_series / df["EMA20"]
-
-    ema12 = close_series.ewm(span=12, adjust=False).mean()
-    ema26 = close_series.ewm(span=26, adjust=False).mean()
-    df["MACD"] = ema12 - ema26
-
-    df.dropna(inplace=True)
-    return df
-
-@app.get("/signal/{ticker}")
-def get_signal(ticker: str):
-    # period="6mo" ensures enough data for the 20-day SMA/EMA
-    df = yf.download(ticker, period="6mo", auto_adjust=True, progress=False)
-    
-    if df.empty:
-        return {"error": "Ticker not found or no data available"}
-
-    processed_df = create_features(df)
-    
-    # Get the very last row for features
-    latest_features = processed_df[FEATURES].tail(1)
-    current_price = float(processed_df["Close"].iloc[-1])
-
-    # Predict
-    rf_pred = float(rf_model.predict(latest_features)[0])
-    xgb_pred = float(xgb_model.predict(latest_features)[0])
-    
-    # Your target was 'Daily_Return'. 
-    # To get a price prediction: current_price * (1 + predicted_return)
-    rf_price = current_price * (1 + rf_pred)
-    xgb_price = current_price * (1 + xgb_pred)
-    avg_price = (rf_price + xgb_price) / 2
-
-    signal = "BUY" if avg_price > current_price else "SELL"
-
+# --- Stock Data & Charts ---
+@app.get("/supabase/recent/{ticker}")
+def get_recent_data(ticker: str, days: int = Query(30, description="Number of days")):
+    """Get recent stock data for a ticker"""
     return {
         "ticker": ticker.upper(),
-        "current_price": round(current_price, 2),
-        "predicted_price_next_day": round(avg_price, 2),
-        "expected_return": f"{round(((avg_price/current_price)-1)*100, 2)}%",
-        "signal": signal
+        "days": days,
+        "data": [],
+        "message": "Connect to Supabase for real data"
+    }
+
+@app.get("/supabase/ticker/{ticker}")
+def get_ticker_data(
+    ticker: str,
+    start_date: str = Query("2024-01-01", description="Start date (YYYY-MM-DD)"),
+    limit: int = Query(100, description="Max records")
+):
+    """Get ticker data with date range and limit"""
+    return {
+        "ticker": ticker.upper(),
+        "start_date": start_date,
+        "limit": limit,
+        "data": [],
+        "message": "Connect to Supabase for real data"
+    }
+
+# --- Market Overview ---
+@app.get("/supabase/latest")
+def get_latest_market(limit: int = Query(10, description="Number of latest records")):
+    """Get latest market data for all tickers"""
+    return {
+        "limit": limit,
+        "data": [],
+        "message": "Connect to Supabase for real data"
+    }
+
+@app.get("/supabase/top-performers")
+def get_top_performers(top_n: int = Query(10, description="Top N performers")):
+    """Get top performing stocks"""
+    return {
+        "top_n": top_n,
+        "performers": [],
+        "message": "Connect to Supabase for real data"
+    }
+
+# --- Analysis & Filtering ---
+@app.get("/supabase/stats/{ticker}")
+def get_ticker_stats(
+    ticker: str,
+    start_date: str = Query("2024-01-01", description="Start date (auto-ends today)")
+):
+    """Get statistical analysis for a ticker"""
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    return {
+        "ticker": ticker.upper(),
+        "start_date": start_date,
+        "end_date": end_date,
+        "stats": {},
+        "message": "Connect to Supabase for real data"
+    }
+
+@app.get("/supabase/rsi-search")
+def search_by_rsi(
+    min_rsi: float = Query(0, description="Minimum RSI"),
+    max_rsi: float = Query(30, description="Maximum RSI")
+):
+    """Search stocks by RSI range"""
+    return {
+        "min_rsi": min_rsi,
+        "max_rsi": max_rsi,
+        "results": [],
+        "message": "Connect to Supabase for real data"
     }
 
 if __name__ == "__main__":

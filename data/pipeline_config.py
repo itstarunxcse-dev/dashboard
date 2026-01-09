@@ -54,6 +54,19 @@ STANDARD_COLUMNS = [
 INITIAL_CAPITAL = 1000000.0
 COMMISSION = 0.002  # 0.2%
 
-# API endpoints (if using pipeline APIs)
-PIPELINE_API_URL = "http://localhost:8000"
-LIVE_INDICATOR_API_URL = "http://localhost:8001"
+# API endpoints - Updated by DE team (Aman)
+# Base URL: http://127.0.0.1:8000
+PIPELINE_API_URL = "http://127.0.0.1:8000"
+LIVE_INDICATOR_API_URL = "http://127.0.0.1:8001"
+
+# New API Endpoints from DE team
+API_ENDPOINTS = {
+    "health": "/health",
+    "run_pipeline": "/run-pipeline",
+    "recent_data": "/supabase/recent/{ticker}",  # params: days=30
+    "ticker_data": "/supabase/ticker/{ticker}",  # params: start_date, limit
+    "latest_market": "/supabase/latest",  # params: limit=10
+    "top_performers": "/supabase/top-performers",  # params: top_n=10
+    "ticker_stats": "/supabase/stats/{ticker}",  # params: start_date (auto-ends today)
+    "rsi_search": "/supabase/rsi-search"  # params: min_rsi, max_rsi
+}

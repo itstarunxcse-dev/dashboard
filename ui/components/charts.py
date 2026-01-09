@@ -153,7 +153,7 @@ def render_price_chart(data: StockData):
     _update_fig_layout(fig, height=600)
     
     # Render with Streamlit
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 def render_rsi_chart(data: StockData):
     """
@@ -191,7 +191,7 @@ def render_rsi_chart(data: StockData):
     _update_fig_layout(fig, height=300)
     fig.update_yaxes(range=[0, 100], tickvals=[30, 50, 70])
     
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 def render_drawdown_chart(dates, drawdown_curve):
     """
@@ -223,7 +223,7 @@ def render_drawdown_chart(dates, drawdown_curve):
             bgcolor="rgba(0,0,0,0.7)", borderpad=4
         )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 def render_price_with_trades_chart(dates, prices, buy_signals, sell_signals):
     """
@@ -281,7 +281,7 @@ def render_price_with_trades_chart(dates, prices, buy_signals, sell_signals):
         x=1
     ))
     
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 def render_equity_curve(dates, equity_curve):
     """
@@ -314,7 +314,7 @@ def render_equity_curve(dates, equity_curve):
             bgcolor="rgba(0,0,0,0.5)", borderpad=4
         )
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 def render_equity_comparison(dates, market_equity, strategy_equity, buy_signals=None, sell_signals=None, prices=None):
     """
@@ -426,7 +426,7 @@ def render_equity_comparison(dates, market_equity, strategy_equity, buy_signals=
     fig.update_yaxes(title_text="Equity (₹)", row=1, col=1)
     fig.update_yaxes(title_text="Activity", row=2, col=1, showticklabels=False)
     
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
     
 def render_profit_loss_chart(dates, returns):
@@ -448,7 +448,7 @@ def render_profit_loss_chart(dates, returns):
     _update_fig_layout(fig, height=350)
     fig.update_yaxes(title_text="Return", tickformat=".2%")
     
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
 
 def render_volume_chart(dates, volumes):
     """
@@ -468,4 +468,4 @@ def render_volume_chart(dates, volumes):
     _update_fig_layout(fig, height=300)
     fig.update_yaxes(title_text="Volume")
     
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})

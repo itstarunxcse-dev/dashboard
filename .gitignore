@@ -17,6 +17,11 @@ ENV/
 # Streamlit
 .streamlit/
 
+# Environment Variables (SECURITY: Never commit credentials)
+.env
+*.env
+!.env.example
+
 # IDE
 .vscode/
 .idea/

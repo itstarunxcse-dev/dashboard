@@ -221,7 +221,7 @@ def render_sidebar_search():
         )
 
     # 3. Primary Action
-    if st.button("🚀 Analyze Stock", type="primary", use_container_width=True, key="analyze_btn"):
+    if st.button("🚀 Analyze Stock", type="primary", width='stretch', key="analyze_btn"):
         run_analysis_pipeline(symbol, st.session_state.period, st.session_state.interval)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -248,7 +248,7 @@ def render_sidebar_search():
     cols = st.columns(3)
     for idx, ticker in enumerate(popular_tickers):
         with cols[idx % 3]:
-            if st.button(ticker, key=f"pop_{ticker}", use_container_width=True):
+            if st.button(ticker, key=f"pop_{ticker}", width='stretch'):
                 st.session_state['current_symbol'] = ticker
                 run_analysis_pipeline(ticker, st.session_state.period, st.session_state.interval)
 
@@ -265,7 +265,7 @@ def render_sidebar_search():
         for hist_ticker in st.session_state['search_history']:
             col1, col2 = st.columns([4, 1])
             with col1:
-                if st.button(f"📈 {hist_ticker}", key=f"hist_{hist_ticker}", use_container_width=True):
+                if st.button(f"📈 {hist_ticker}", key=f"hist_{hist_ticker}", width='stretch'):
                     st.session_state['current_symbol'] = hist_ticker
                     run_analysis_pipeline(hist_ticker, st.session_state.period, st.session_state.interval)
             with col2:
@@ -278,11 +278,11 @@ def render_sidebar_search():
     st.markdown("<br>", unsafe_allow_html=True)
     col_clear1, col_clear2 = st.columns(2)
     with col_clear1:
-        if st.button("🗑️ Clear History", use_container_width=True, help="Clear search history"):
+        if st.button("🗑️ Clear History", width='stretch', help="Clear search history"):
             st.session_state['search_history'] = []
             st.success("✅ History cleared")
     with col_clear2:
-        if st.button("🔄 Reset Cache", use_container_width=True, help="Clear all cached data"):
+        if st.button("🔄 Reset Cache", width='stretch', help="Clear all cached data"):
             try:
                 st.cache_data.clear()
                 st.cache_resource.clear()
@@ -495,7 +495,7 @@ def main():
         symbol, period, interval = render_controls()
         
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🚀 Analyze Stock", type="primary", use_container_width=True):
+        if st.button("🚀 Analyze Stock", type="primary", width='stretch'):
             run_analysis_pipeline(symbol, period, interval)
 
     # --- Main Content Layout ---

@@ -264,7 +264,7 @@ def main():
     save, reset = st.columns([3, 1])
 
     with save:
-        if st.button("💾 Save Configuration", type="primary", use_container_width=True):
+        if st.button("💾 Save Configuration", type="primary", width='stretch'):
             with st.spinner("Saving alert configuration..."):
                 time.sleep(0.6)
                 st.session_state.saved_alert_config = collect_alert_config()
@@ -274,7 +274,7 @@ def main():
                 st.json(st.session_state.saved_alert_config)
 
     with reset:
-        if st.button("↩ Reset", use_container_width=True):
+        if st.button("↩ Reset", width='stretch'):
             reset_to_defaults()
             st.rerun()
 

@@ -293,7 +293,7 @@ def render_trade_history(metrics: BacktestMetrics):
     # Style the dataframe
     st.dataframe(
         df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         height=400
     )

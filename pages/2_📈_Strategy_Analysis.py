@@ -113,7 +113,7 @@ def handle_missing_data():
 
     symbol, period, interval = render_controls()
 
-    if st.button("🚀 Analyze Stock", type="primary", use_container_width=True):
+    if st.button("🚀 Analyze Stock", type="primary", width='stretch'):
         try:
             with st.spinner(f"Fetching {symbol.upper()} data..."):
                 data = fetch_stock_data(symbol, period, interval)
@@ -178,7 +178,7 @@ def main():
         
         symbol, period, interval = render_controls()
         
-        if st.button("🚀 Analyze Stock", type="primary", use_container_width=True, key="sidebar_analyze"):
+        if st.button("🚀 Analyze Stock", type="primary", width='stretch', key="sidebar_analyze"):
             try:
                 with st.spinner(f"Fetching {symbol} data..."):
                     data = fetch_stock_data(symbol, period, interval)

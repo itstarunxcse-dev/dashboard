@@ -162,4 +162,4 @@ def render_macd_chart(data: StockData):
     # Apply unified layout
     _update_fig_layout(fig, height=300)
     
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, width='stretch', config={'displayModeBar': False})
