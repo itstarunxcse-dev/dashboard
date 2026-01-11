@@ -89,73 +89,125 @@ class DataEngine:
         days = period_days.get(period, 30)
         
         try:
+            print(f"📡 [DEBUG] Fetching {symbol} from API (days={days})...")
+            
             # Use the new API endpoint
             api_response = API_CLIENT.get_recent_data(symbol, days=days)
             
+            # DEBUG RESPONSE
+            # print(f"📥 [DEBUG] API Response Keys: {api_response.keys() if api_response else 'None'}")
+            
+            # Check for error
+            if isinstance(api_response, dict) and "error" in api_response:
+                print(f"❌ [ERROR] API returned error: {api_response['error']}")
+                raise ValueError(f"API Error: {api_response['error']}")
+
             # Check if API returned real data
             if api_response.get('data') and len(api_response['data']) > 0:
+                print(f"✅ [SUCCESS] Received {len(api_response['data'])} records for {symbol}")
+                
                 # Process API data into StockData format
                 df = pd.DataFrame(api_response['data'])
-                # Convert to StockData (implementation depends on API response structure)
                 return DataEngine._process_api_data(df, symbol)
             else:
-                # API returned placeholder, fall back to yfinance
-                print(f"ℹ️ API returned placeholder for {symbol}, using yfinance")
-                raise Exception("API placeholder response")
+                print(f"⚠️ [WARNING] API returned empty data for {symbol}")
+                raise ValueError(f"No data returned from API for {symbol}")
                 
         except Exception as e:
-            print(f"⚠️ API fetch failed: {e}")
-            raise
+            print(f"❌ [CRITICAL] API fetch failed for {symbol}: {e}")
+            # NO FALLBACK -> Raise error to show in UI
+            raise e
     
     @staticmethod
     def _process_api_data(df: pd.DataFrame, symbol: str) -> StockData:
-        """Process API response data into StockData format"""
-        # This is a placeholder - adjust based on actual API response structure
-        # For now, this will rarely be called since API returns placeholders
-        raise NotImplementedError("API data processing not yet implemented - using yfinance")
-        
-        # Get data from pipeline
-        df = get_pipeline_data(
-            ticker=symbol,
-            start_date=start_date.strftime('%Y-%m-%d'),
-            end_date=end_date.strftime('%Y-%m-%d')
-        )
-        
-        if df.empty:
-            raise ValueError(f"No data in pipeline for {symbol}")
-        
-        # Extract latest values
-        current_price = df['Close'].iloc[-1]
-        prev_close = df['Close'].iloc[-2] if len(df) > 1 else current_price
-        
-        price_change = current_price - prev_close
-        price_change_pct = (price_change / prev_close) * 100 if prev_close else 0
-        
-        # Market status
-        market_status = "Open" if datetime.now().weekday() < 5 else "Closed"
-        
-        return StockData(
-            symbol=symbol.upper(),
-            current_price=float(current_price),
-            price_change=float(price_change),
-            price_change_pct=float(price_change_pct),
-            last_updated=datetime.now(),
-            market_status=market_status,
-            dates=df.index.strftime('%Y-%m-%d').tolist(),
-            opens=df['Open'].tolist(),
-            highs=df['High'].tolist(),
-            lows=df['Low'].tolist(),
-            closes=df['Close'].tolist(),
-            volumes=df['Volume'].astype(int).tolist(),
-            rsi=df['RSI_14'].tolist() if 'RSI_14' in df.columns else [50] * len(df),
-            sma_20=df['SMA_20'].tolist() if 'SMA_20' in df.columns else df['Close'].tolist(),
-            sma_50=df['SMA_50'].tolist() if 'SMA_50' in df.columns else df['Close'].tolist(),
-            ema_12=df['EMA_12'].tolist() if 'EMA_12' in df.columns else df['Close'].tolist(),
-            ema_26=df['EMA_26'].tolist() if 'EMA_26' in df.columns else df['Close'].tolist(),
-            macd=df['MACD'].tolist() if 'MACD' in df.columns else [0] * len(df),
-            macd_signal=df['MACD_Signal'].tolist() if 'MACD_Signal' in df.columns else [0] * len(df),
-            macd_hist=(df['MACD'] - df['MACD_Signal']).tolist() if 'MACD' in df.columns and 'MACD_Signal' in df.columns else [0] * len(df)
-        )
+        """
+        Process API response data into StockData format.
+        Calculates technical indicators since API provides raw OHLCV.
+        """
+        try:
+            # 1. Prepare DataFrame
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                df = df.sort_values('date')
+            
+            # 2. Extract Basic Data
+            # Note: API keys are lowercase (date, open, close, etc.)
+            dates = df['date'].dt.strftime('%Y-%m-%d').tolist() if 'date' in df.columns else []
+            closes = df['close'].tolist() if 'close' in df.columns else []
+            opens = df['open'].tolist() if 'open' in df.columns else []
+            highs = df['high'].tolist() if 'high' in df.columns else []
+            lows = df['low'].tolist() if 'low' in df.columns else []
+            volumes = df['volume'].tolist() if 'volume' in df.columns else []
+            
+            if not closes:
+                raise ValueError("No close price data available")
+
+            # 3. Calculate Technical Indicators
+            # Convert to Series for pandas calculations
+            s_close = pd.Series(closes)
+            
+            # RSI (14)
+            delta = s_close.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi_series = 100 - (100 / (1 + rs))
+            rsi = rsi_series.fillna(50).tolist()
+            
+            # SMAs
+            sma_20 = s_close.rolling(window=20).mean().fillna(s_close).tolist()
+            sma_50 = s_close.rolling(window=50).mean().fillna(s_close).tolist()
+            
+            # EMAs
+            ema_12 = s_close.ewm(span=12, adjust=False).mean().tolist()
+            ema_26 = s_close.ewm(span=26, adjust=False).mean().tolist()
+            
+            # MACD
+            s_ema_12 = pd.Series(ema_12)
+            s_ema_26 = pd.Series(ema_26)
+            macd_series = s_ema_12 - s_ema_26
+            macd_signal_series = macd_series.ewm(span=9, adjust=False).mean()
+            macd_hist_series = macd_series - macd_signal_series
+            
+            macd = macd_series.fillna(0).tolist()
+            macd_signal = macd_signal_series.fillna(0).tolist()
+            macd_hist = macd_hist_series.fillna(0).tolist()
+
+            # 4. Summary Stats
+            current_price = closes[-1]
+            prev_close = closes[-2] if len(closes) > 1 else current_price
+            price_change = current_price - prev_close
+            price_change_pct = (price_change / prev_close) * 100 if prev_close != 0 else 0.0
+            
+            market_status = "Open" if datetime.now().weekday() < 5 else "Closed"
+
+            return StockData(
+                symbol=symbol.upper(),
+                current_price=float(current_price),
+                price_change=float(price_change),
+                price_change_pct=float(price_change_pct),
+                last_updated=datetime.now(),
+                market_status=market_status,
+                dates=dates,
+                opens=opens,
+                highs=highs,
+                lows=lows,
+                closes=closes,
+                volumes=volumes,
+                rsi=rsi,
+                sma_20=sma_20,
+                sma_50=sma_50,
+                ema_12=ema_12,
+                ema_26=ema_26,
+                macd=macd,
+                macd_signal=macd_signal,
+                macd_hist=macd_hist
+            )
+            
+        except Exception as e:
+            # Fallback to empty/placeholder if processing fails
+            print(f"Error processing API data: {e}")
+            raise ValueError(f"Processing failed: {e}")
     
     @staticmethod
     def _fetch_from_yfinance(symbol: str, period: str, interval: str) -> StockData:

@@ -55,6 +55,7 @@ from ui.components.metrics import (
 from ui.components.export import export_data_section
 from data.fetcher import DataEngine
 from backtesting.engine import BacktestEngine
+from ui.utils.constants import get_common_tickers
 
 # ======================================================
 # SESSION KEYS

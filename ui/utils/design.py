@@ -446,3 +446,16 @@ def card_container(key=None):
     Returns a container with the glassmorphism class.
     """
     return st.container()
+
+def glass_card(title: str, icon: str = ""):
+    """Start a glassmorphism card with a title"""
+    st.markdown(f"""
+    <div class="glass-card">
+        <div class="section-title">
+            <span>{icon}</span> {title}
+        </div>
+    """, unsafe_allow_html=True)
+
+def glass_card_end():
+    """End a glassmorphism card"""
+    st.markdown("</div>", unsafe_allow_html=True)

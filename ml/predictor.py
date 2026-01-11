@@ -122,30 +122,44 @@ class MLEngine:
                 current_price = data.current_price
                 expected_return = ((predicted_price / current_price) - 1) * 100
                 
-                # Generate signal based on predicted return
-                if expected_return > 1.0:
+                # Combine ML prediction with Technical Context for stronger signals
+                # Many ML models predict very conservative returns (e.g., 0.05%), 
+                # so we combine this with technicals to force a decision.
+                
+                technical_score = 0
+                rsi = data.rsi[-1] if data.rsi and len(data.rsi) > 0 else 50
+                if rsi < 40: technical_score += 1  # Oversold bias
+                if rsi > 60: technical_score -= 1  # Overbought bias
+                
+                sma_50 = data.sma_50[-1] if data.sma_50 else data.current_price
+                if data.current_price > sma_50: technical_score += 0.5 # Uptrend
+                
+                # Decision Logic
+                # If ML predicts even slightly positive (>0.02%) OR (non-negative AND technicals bullish)
+                if expected_return > 0.02 or (expected_return > -0.05 and technical_score > 0):
                     action = "BUY"
-                    confidence = ml_confidence
+                    # Boost confidence if technicals agree
+                    confidence = min(ml_confidence * (1.1 if technical_score > 0 else 1.0), 96.0)
                     reasons = [
-                        f"ML models predict {expected_return:.2f}% return",
-                        f"Predicted price: ₹{predicted_price:.2f}",
-                        "Ensemble (RF + XGBoost) shows bullish momentum"
+                        f"ML predicts positive outlook ({expected_return:.2f}%)",
+                        f"Target: ₹{predicted_price:.2f}",
+                        "Technical factors support bullish trend" if technical_score > 0 else "Bullish signal despite neutral technicals"
                     ]
-                elif expected_return < -1.0:
+                elif expected_return < -0.02 or (expected_return < 0.05 and technical_score < 0):
                     action = "SELL"
-                    confidence = ml_confidence
+                    confidence = min(ml_confidence * (1.1 if technical_score < 0 else 1.0), 96.0)
                     reasons = [
-                        f"ML models predict {expected_return:.2f}% return",
-                        f"Predicted price: ₹{predicted_price:.2f}",
-                        "Ensemble (RF + XGBoost) shows bearish momentum"
+                        f"ML predicts negative/weak outlook ({expected_return:.2f}%)",
+                        f"Target: ₹{predicted_price:.2f}",
+                        "Technical factors suggest weakness"
                     ]
                 else:
                     action = "HOLD"
-                    confidence = ml_confidence * 0.9
+                    confidence = ml_confidence
                     reasons = [
-                        f"ML models predict neutral movement ({expected_return:.2f}%)",
-                        f"Predicted price: ₹{predicted_price:.2f}",
-                        "Ensemble suggests waiting for clearer signals"
+                        f"Flat prediction ({expected_return:.2f}%)",
+                        "No strong directional signal found",
+                        "Wait for clearer trend"
                     ]
                 
                 # Add technical indicator context

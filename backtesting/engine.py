@@ -1,213 +1,228 @@
-# -*- coding: utf-8 -*-
-import pandas as pd
 import numpy as np
-from contracts.schema import StockData, BacktestMetrics, StrategyConfig, TradeRecord
+import pandas as pd
+import vectorbt as vbt
+
 
 class BacktestEngine:
+    INITIAL_CAPITAL = 1_000_000
+    FEES = 0.002
+    TRADING_DAYS = 252
+
+    def __init__(self, df: pd.DataFrame):
+        self.df = df.copy()
+
     @staticmethod
-    def run_backtest(data: StockData) -> BacktestMetrics:
-        """
-        Runs a vectorized backtest on the provided historical data.
-        Strategy: MLStrategy - MACD Crossover (simulating ML signals)
-        """
-        # Strategy Configuration
-        initial_capital = 1000000.0
-        commission = 0.002  # 0.2%
-        
-        config = StrategyConfig(
-            strategy_name="MLStrategy",
-            initial_capital=initial_capital,
-            commission=commission,
-            trade_on_close=True,
-            position_type="Long-only"
-        )
-        
-        df = pd.DataFrame({
-            'Close': data.closes,
-            'MACD': data.macd,
-            'Signal': data.macd_signal
-        }, index=pd.to_datetime(data.dates))
-        
-        # Generate Signals (Target = 1 for Buy, 0 for Exit)
-        df['Target'] = np.where(df['MACD'] > df['Signal'], 1, 0)
-        df['Position'] = df['Target'].shift(1).fillna(0)
-        df['Returns'] = df['Close'].pct_change()
-        df['Strategy_Returns'] = df['Position'] * df['Returns']
-        
-        # Apply Commission
-        df['Position_Change'] = df['Position'].diff().abs()
-        df['Commission_Cost'] = df['Position_Change'] * commission
-        df['Strategy_Returns'] = df['Strategy_Returns'] - df['Commission_Cost']
-        
-        # Calculate Equity Curve
-        cumulative_returns = (1 + df['Strategy_Returns'].fillna(0)).cumprod()
-        equity_curve = (initial_capital * cumulative_returns).tolist()
-        final_equity = equity_curve[-1]
-        
-        # Market Equity (Buy & Hold Benchmark)
-        market_returns = df['Returns'].fillna(0)
-        market_cumulative = (1 + market_returns).cumprod()
-        market_equity = (initial_capital * market_cumulative).tolist()
-        
-        # --- Time Definitions ---
-        days = len(df)
-        years = days / 252  # Assuming 252 trading days per year
-        
-        # --- Strategy Performance Metrics ---
-        total_return = (final_equity / initial_capital - 1) * 100
-        cagr = ((final_equity / initial_capital) ** (1 / years) - 1) * 100 if years > 0 else 0
-        annual_return = cagr  # Same as CAGR
-        
-        volatility = df['Strategy_Returns'].std() * np.sqrt(252) * 100 if df['Strategy_Returns'].std() != 0 else 0
-        
-        winning_trades = len(df[df['Strategy_Returns'] > 0])
-        total_active_trades = len(df[df['Strategy_Returns'] != 0])
-        win_rate = (winning_trades / total_active_trades * 100) if total_active_trades > 0 else 0
-        
-        peak = (initial_capital * cumulative_returns).expanding(min_periods=1).max()
-        drawdown = ((initial_capital * cumulative_returns) / peak - 1) * 100
-        drawdown_curve = drawdown.tolist()
-        max_drawdown = drawdown.min()
-        
-        sharpe_ratio = (df['Strategy_Returns'].mean() / df['Strategy_Returns'].std() * np.sqrt(252)) if df['Strategy_Returns'].std() != 0 else 0
-        
-        avg_trade_return = df[df['Position_Change'] > 0]['Strategy_Returns'].mean() * 100 if len(df[df['Position_Change'] > 0]) > 0 else 0
+    def to_py(val):
+        if hasattr(val, "item"):   # numpy scalar
+            return val.item()
+        return val
 
-        # --- Market Metrics ---
-        market_total_return = (market_equity[-1] / initial_capital - 1) * 100
-        market_annual_return = ((market_equity[-1] / initial_capital) ** (1 / years) - 1) * 100 if years > 0 else 0
-        market_volatility = market_returns.std() * np.sqrt(252) * 100 if market_returns.std() != 0 else 0
-        market_sharpe_ratio = (market_returns.mean() / market_returns.std() * np.sqrt(252)) if market_returns.std() != 0 else 0
+
+    # ---------------- MARKET ----------------
+    def run_market(self):
+        returns = self.df["Close"].pct_change().dropna()
+
+        equity = (1 + returns).cumprod()
+        equity = equity * self.INITIAL_CAPITAL
+
+        n_years = len(returns) / self.TRADING_DAYS
+        drawdown = (equity - equity.cummax()) / equity.cummax()
+
+        start_equity = equity.iloc[0]
+        end_equity = equity.iloc[-1]
+
+        return {
+            "metrics": {
+                "total_return_pct": self.to_py((end_equity / start_equity - 1) * 100),
+                "cagr_pct": self.to_py(((end_equity / start_equity) ** (1 / n_years) - 1) * 100),
+                "volatility_pct": self.to_py(returns.std() * np.sqrt(self.TRADING_DAYS) * 100),
+                "sharpe_ratio": self.to_py((returns.mean() / returns.std()) * np.sqrt(self.TRADING_DAYS)),
+                "max_drawdown_pct": self.to_py(abs(drawdown.min()) * 100),
+            },
+            "equity": equity
+        }
+
+
+    # ---------------- ML STRATEGY ----------------
+    def run_ml(self):
+        entries = self.df["Signal"] == 1
+        exits = self.df["Signal"] == -1
+
+        pf = vbt.Portfolio.from_signals(
+            close=self.df["Close"],
+            entries=entries,
+            exits=exits,
+            init_cash=self.INITIAL_CAPITAL,
+            fees=self.FEES,
+            freq="1D"
+        )
+
+        stats = pf.stats()
+        equity = pf.value()
+        returns = pf.returns()
+
+        n_years = len(returns.dropna()) / self.TRADING_DAYS
+        trades = pf.trades.records_readable.copy()
+
+        # ---------------- TRADE SPLITS ----------------
+        winning_trades_df = trades[trades["PnL"] > 0]
+        losing_trades_df = trades[trades["PnL"] < 0]
+
+        winning_trades = len(winning_trades_df)
+        losing_trades = len(losing_trades_df)
+
+        avg_win_price = (
+            (winning_trades_df["Avg Exit Price"] - winning_trades_df["Avg Entry Price"]).mean()
+            if winning_trades > 0 else 0.0
+        )
+
+        avg_loss_price = (
+            (losing_trades_df["Avg Exit Price"] - losing_trades_df["Avg Entry Price"]).mean()
+            if losing_trades > 0 else 0.0
+        )
+
+        # ---------------- ML METRICS ----------------
+        ml_metrics = {
+            "total_return_pct": self.to_py(stats["Total Return [%]"]),
+            "cagr_pct": self.to_py(
+                ((equity.iloc[-1] / equity.iloc[0]) ** (1 / n_years) - 1) * 100
+            ),
+            "volatility_pct": self.to_py(
+                returns.std() * np.sqrt(self.TRADING_DAYS) * 100
+            ),
+            "sharpe_ratio": self.to_py(stats["Sharpe Ratio"]),
+            "max_drawdown_pct": self.to_py(abs(stats["Max Drawdown [%]"])),
+            "total_equity_value": self.to_py(equity.iloc[-1]),
+            "total_trades": int(self.to_py(stats["Total Trades"])),
+            "win_rate_pct": self.to_py(stats["Win Rate [%]"]),
+        }
+
+        # ---------------- TRADING METRICS ----------------
+        trading_metrics = {
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
+            "profit_factor": self.to_py(stats["Profit Factor"]),
+            "avg_win_price": float(self.to_py(avg_win_price)),
+            "avg_loss_price": float(self.to_py(avg_loss_price)),
+        }
+
+        return {
+            "ml_metrics": ml_metrics,
+            "trading_metrics": trading_metrics,
+            "equity": equity,
+            "trades": trades
+        }
+
+        # ---------------- CONFIDENCE ----------------
+    @staticmethod
+    def calculate_confidence(ml_metrics, market_metrics):
+        """
+        Returns confidence score between 0 and 100
+        based on ML strategy vs Market performance."""
+        try:
+            mkt_sharpe = market_metrics["sharpe_ratio"]
+            mkt_cagr = market_metrics["cagr_pct"]
+            ml_sharpe = ml_metrics["sharpe_ratio"]
+            ml_cagr = ml_metrics["cagr_pct"]
+
+            # Safety guards
+            if mkt_sharpe <= 0 or mkt_cagr <= 0:
+                return 0.0
+
+            # Raw confidence (relative edge)
+            raw_confidence = (ml_sharpe / mkt_sharpe) * (ml_cagr / mkt_cagr)
+
+            # ---- NORMALIZATION ----
+            # raw = 1.0  → 50
+            # raw = 2.0+ → 100
+            normalized = (raw_confidence / 2.0) * 100
+
+            # Clamp between 0 and 100
+            normalized = max(0.0, min(normalized, 100.0))
+
+            return float(round(normalized, 2))
+
+        except Exception:
+             return 0.0
+
+
+    @staticmethod
+    def run_backtest(stock_data):
+        """
+        Static wrapper to run the full backtest workflow.
+        Fetches historical signals from the API for the given stock.
+        """
+        import requests
+        from contracts.schema import StockData
         
-        market_peak = (initial_capital * market_cumulative).expanding(min_periods=1).max()
-        market_drawdown = ((initial_capital * market_cumulative) / market_peak - 1) * 100
-        market_max_drawdown = market_drawdown.min()
-        
-        # Alpha & Beta
-        covariance = np.cov(df['Strategy_Returns'].fillna(0), market_returns)[0][1]
-        market_variance = market_returns.var()
-        beta = covariance / market_variance if market_variance != 0 else 1.0
-        alpha = annual_return - (0 + beta * (market_annual_return - 0)) # CAPM Alpha (Risk Free = 0)
-        
-        # Information Ratio
-        active_returns = df['Strategy_Returns'].fillna(0) - market_returns
-        tracking_error = active_returns.std() * np.sqrt(252)
-        information_ratio = (active_returns.mean() * 252) / tracking_error if tracking_error != 0 else 0
-        
-        # Confidence Ratio (Simulated based on MACD strength at entry)
-        # We'll normalize the MACD histogram by price to get a relative strength
-        df['Signal_Strength'] = (df['MACD'] - df['Signal']).abs() / df['Close']
-        confidence_ratio = df[df['Target'] == 1]['Signal_Strength'].mean() * 1000 # Scale up for readability (0-100 range approx)
-        if np.isnan(confidence_ratio): confidence_ratio = 50.0 # Default
-        
-        # Returns list for detailed analysis
-        returns_list = df['Strategy_Returns'].fillna(0).tolist()
-        
-        # Trade History
-        trades = []
-        buy_signals = []
-        sell_signals = []
-        
-        position_open = False
-        entry_idx = 0
-        entry_price = 0
-        
-        for idx in range(len(df)):
-            current_signal = df['Target'].iloc[idx]
+        try:
+            # 1. Fetch Historical Signals from API
+            # Note: We use the API to get consistent signals as generated by the backend
+            url = "http://localhost:8000/api/v1/ml/signal/historical"
+            # Extract ticker from stock_data object or dictionary
+            ticker = stock_data.symbol if hasattr(stock_data, 'symbol') else stock_data.get('symbol')
             
-            # Entry: Buy when Target = 1
-            if current_signal == 1 and not position_open:
-                position_open = True
-                entry_idx = idx
-                entry_price = df['Close'].iloc[idx]
-                buy_signals.append(idx)
+            response = requests.post(url, json={"ticker": ticker})
+            if response.status_code != 200:
+                raise ValueError(f"API Error: {response.text}")
             
-            # Exit: Close position when Target = 0
-            elif current_signal == 0 and position_open:
-                position_open = False
-                exit_price = df['Close'].iloc[idx]
-                profit_loss = (exit_price - entry_price) - (entry_price * commission * 2)  # Entry + Exit commission
-                profit_loss_pct = (profit_loss / entry_price) * 100
-                duration = idx - entry_idx
+            data = response.json()
+            
+            # 2. Convert to DataFrame
+            rows = data.get("rows", [])
+            if not rows:
+                raise ValueError("No historical data received from API")
                 
-                trades.append(TradeRecord(
-                    entry_date=df.index[entry_idx].strftime('%Y-%m-%d'),
-                    exit_date=df.index[idx].strftime('%Y-%m-%d'),
-                    entry_price=float(entry_price),
-                    exit_price=float(exit_price),
-                    profit_loss=float(profit_loss),
-                    profit_loss_pct=float(profit_loss_pct),
-                    duration_days=int(duration),
-                    trade_type="LONG"
-                ))
-                sell_signals.append(idx)
-        
-        # Close any open position at the end
-        if position_open:
-            exit_price = df['Close'].iloc[-1]
-            profit_loss = (exit_price - entry_price) - (entry_price * commission * 2)
-            profit_loss_pct = (profit_loss / entry_price) * 100
-            duration = len(df) - 1 - entry_idx
+            df = pd.DataFrame(rows)
+            df['Date'] = pd.to_datetime(df['date'])
+            df.set_index('Date', inplace=True)
             
-            trades.append(TradeRecord(
-                entry_date=df.index[entry_idx].strftime('%Y-%m-%d'),
-                exit_date=df.index[-1].strftime('%Y-%m-%d'),
-                entry_price=float(entry_price),
-                exit_price=float(exit_price),
-                profit_loss=float(profit_loss),
-                profit_loss_pct=float(profit_loss_pct),
-                duration_days=int(duration),
-                trade_type="LONG"
-            ))
-            sell_signals.append(len(df) - 1)
-        
-        # Monthly Returns
-        monthly_returns = df['Strategy_Returns'].resample('ME').sum()
-        monthly_returns_dict = {k.strftime('%Y-%m'): float(v) for k, v in monthly_returns.items()}
-        
-        # Data Scope
-        date_range = f"{df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}"
-        
-        return BacktestMetrics(
-            config=config,
-            initial_capital=float(initial_capital),
-            final_equity=float(final_equity),
-            total_trades=len(trades),
-            win_rate=float(win_rate),
-            max_drawdown=float(max_drawdown),
-            total_return=float(total_return),
-            annual_return=float(annual_return),
-            cagr=float(cagr),
-            volatility=float(volatility),
-            sharpe_ratio=float(sharpe_ratio),
-            avg_trade_return=float(avg_trade_return),
-            confidence_ratio=float(confidence_ratio),
+            # Rename columns to match vectorbt expectations (Capitalized)
+            df.rename(columns={
+                "open": "Open", 
+                "high": "High", 
+                "low": "Low", 
+                "close": "Close", 
+                "volume": "Volume",
+                "signal": "Signal"
+            }, inplace=True)
             
-            # Market Metrics
-            market_total_return=float(market_total_return),
-            market_annual_return=float(market_annual_return),
-            market_volatility=float(market_volatility),
-            market_sharpe_ratio=float(market_sharpe_ratio),
-            market_max_drawdown=float(market_max_drawdown),
-            alpha=float(alpha),
-            beta=float(beta),
-            information_ratio=float(information_ratio),
+            # 3. Serialize and Run Engine
+            engine = BacktestEngine(df)
+            market_res = engine.run_market()
+            ml_res = engine.run_ml()
             
-            entry_rule="Buy when Target = 1 (MACD > Signal)",
-            exit_rule="Close position when Target = 0 (MACD < Signal)",
-            position_strategy="No short selling implemented",
-            equity_curve=equity_curve,
-            market_equity=market_equity,
-            drawdown_curve=drawdown_curve,
-            returns=returns_list,
-            dates=data.dates,
-            volumes=data.volumes,
-            monthly_returns=monthly_returns_dict,
-            trades=trades,
-            prices=data.closes,
-            buy_signals=buy_signals,
-            sell_signals=sell_signals,
-            data_points=len(df),
-            date_range=date_range
-        )
-
+            # 4. Format Results
+            confidence = BacktestEngine.calculate_confidence(ml_res['ml_metrics'], market_res['metrics'])
+            
+            # Prepare formatted metrics object
+            class Metrics:
+                pass
+            
+            metrics = Metrics()
+            metrics.market_metrics = market_res['metrics']
+            metrics.ml_metrics = ml_res['ml_metrics']
+            metrics.trading_metrics = ml_res['trading_metrics']
+            metrics.confidence_score = confidence
+            
+            # Prepare data for charts
+            metrics.dates = df.index.strftime('%Y-%m-%d').tolist()
+            metrics.market_equity = market_res['equity'].tolist()
+            metrics.equity_curve = ml_res['equity'].tolist()
+            metrics.prices = df['Close'].tolist()
+            metrics.volumes = df['Volume'].tolist()
+            # Calculate daily returns for PnL chart (fill nan with 0)
+            metrics.returns = df['Close'].pct_change().fillna(0).tolist()
+            
+            # Signals for chart markers (indices)
+            metrics.buy_signals = np.where(df['Signal'] == 1)[0].tolist()
+            metrics.sell_signals = np.where(df['Signal'] == -1)[0].tolist()
+            
+            # Trade list
+            metrics.trades = ml_res['trades'].to_dict('records') if not ml_res['trades'].empty else []
+            
+            return metrics
+            
+        except Exception as e:
+            print(f"Backtest runner error: {e}")
+            raise e

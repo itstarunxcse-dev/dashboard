@@ -27,37 +27,16 @@ from ui.utils.design import load_design_system
 # Load Design System
 load_design_system()
 
-# --- Type Definitions ---
-@dataclass
-class StockData:
-    symbol: str
-    current_price: float
-    price_change_pct: float
-    highs: List[float]
-    lows: List[float]
-    volumes: List[float]
-    dates: List[datetime.datetime]
-
-@dataclass
-class PredictionResult:
-    action: str  # "BUY", "HOLD", or "SELL"
-    signal_value: int  # 1 = BUY, 0 = HOLD, -1 = SELL
-    timestamp: datetime.datetime
-    prediction_date: str
-    reasoning: str
-    confidence: float  # 0.0 to 100.0
-    confidence_level: str  # "Low", "Medium", "High", "Very High"
-    key_factors: List[str]
-    feature_importance: dict
-    prediction_frequency: str
-    model_type: str
-    model_version: str
-    last_trained: str
-
 # --- Imports ---
+from contracts.schema import StockData, MLSignal
+from ui.utils.constants import get_common_tickers
 from ui.utils.design import load_design_system
 from ui.components.controls import render_controls
 from ui.components.charts import render_price_chart, render_rsi_chart
+from ui.components.prediction_card import render_prediction_card
+from ui.components.indicators import render_indicators_panel, render_macd_chart
+from data.fetcher import DataEngine
+from ml.predictor import MLEngine
 from ui.components.prediction_card import render_prediction_card
 from ui.components.indicators import render_indicators_panel, render_macd_chart
 from data.fetcher import DataEngine
@@ -92,7 +71,7 @@ def get_ml_engine():
 def get_stock_data(symbol: str, period: str, interval: str) -> Optional[StockData]:
     return DataEngine.fetch_data(symbol, period, interval)
 
-def get_prediction(stock_data: StockData) -> Optional[PredictionResult]:
+def get_prediction(stock_data: StockData) -> Optional[MLSignal]:
     """Get ML prediction with error handling - NO CACHING for fresh predictions"""
     try:
         model = get_ml_engine()
@@ -132,7 +111,7 @@ class SessionManager:
         st.session_state['search_history'] = history[:5]  # Keep last 5
 
     @staticmethod
-    def set_data(data: StockData, signal: PredictionResult):
+    def set_data(data: StockData, signal: MLSignal):
         st.session_state['stock_data'] = data
         st.session_state['ml_signal'] = signal
         # Update current symbol text input
@@ -196,13 +175,26 @@ def render_sidebar_search():
         </div>
     """, unsafe_allow_html=True)
     
-    # 1. Main Search Input
-    symbol = st.text_input(
-        "Ticker Symbol", 
-        value=st.session_state.get('current_symbol', ''),
-        placeholder="e.g. AAPL, MSFT, GOOGL",
-        label_visibility="collapsed",
-        help="Enter any stock ticker or crypto symbol"
+    # 1. Main Search Input (Dropdown)
+    all_tickers = get_common_tickers()
+    current_sym = st.session_state.get('current_symbol', 'AAPL')
+    
+    # Handle custom symbols not in list gracefully
+    if current_sym not in all_tickers and current_sym:
+        # If we want to allow custom, we might need a way to add it or just default to first
+        # For now, let's just default to first if invalid, or maybe append it temporarily?
+        # Appending temporarily is better UX
+        all_tickers.insert(0, current_sym)
+        default_ix = 0
+    else:
+        default_ix = all_tickers.index(current_sym) if current_sym in all_tickers else 0
+
+    symbol = st.selectbox(
+        "Select Ticker", 
+        options=all_tickers, 
+        index=default_ix,
+        key="ticker_select",
+        help="Select a stock from the list."
     )
 
     # 2. Configuration (Collapsible to save space)
@@ -221,36 +213,29 @@ def render_sidebar_search():
         )
 
     # 3. Primary Action
-    if st.button("🚀 Analyze Stock", type="primary", width='stretch', key="analyze_btn"):
+    if st.button("🚀 Analyze Stock", type="primary", use_container_width=True, key="analyze_btn"):
+        # Update session state from the selected value before running
+        st.session_state['current_symbol'] = symbol
         run_analysis_pipeline(symbol, st.session_state.period, st.session_state.interval)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 4. Quick Actions Section
+    # 4. Quick Select (Top Favorites)
     st.markdown("""
         <div style='font-size: 12px; font-weight: 700; color: #94a3b8; 
              margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;'>
-            Quick Select
+            Quick Favorites
         </div>
     """, unsafe_allow_html=True)
     
-    # Get all tickers from pipeline or defaults
-    try:
-        from data.pipeline_adapter import get_available_tickers, is_pipeline_available
-        if is_pipeline_available():
-            all_tickers_list = get_available_tickers()
-            popular_tickers = sorted(all_tickers_list) if all_tickers_list else ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-        else:
-            popular_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-    except:
-        popular_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
-    
+    favorites = ["AAPL", "NVDA", "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "TSLA"]
     cols = st.columns(3)
-    for idx, ticker in enumerate(popular_tickers):
+    for idx, ticker in enumerate(favorites):
         with cols[idx % 3]:
-            if st.button(ticker, key=f"pop_{ticker}", width='stretch'):
+            if st.button(ticker, key=f"pop_{ticker}", use_container_width=True):
                 st.session_state['current_symbol'] = ticker
                 run_analysis_pipeline(ticker, st.session_state.period, st.session_state.interval)
+                st.rerun()
 
     # 5. Recent History Section
     if st.session_state['search_history']:

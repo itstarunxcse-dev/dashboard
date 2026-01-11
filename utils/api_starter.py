@@ -73,9 +73,9 @@ def start_api_background():
             env={**os.environ, 'PYTHONUNBUFFERED': '1'}
         )
         
-        # Wait for API to start (max 10 seconds)
+        # Wait for API to start (max 30 seconds)
         print(f"⏳ Waiting for API to start on port {port}...")
-        for i in range(20):
+        for i in range(60):
             time.sleep(0.5)
             if is_api_running(port):
                 print(f"✅ API server started successfully on http://127.0.0.1:{port}")
@@ -107,9 +107,9 @@ def stop_api():
 atexit.register(stop_api)
 
 def ensure_api_running():
-    """Ensure API is running before dashboard starts"""
-    if not is_api_running():
-        success = start_api_background()
-        if not success:
-            print("⚠️ Dashboard will run with limited functionality (no API connection)")
-    return is_api_running()
+    """
+    MANUAL MODE: We assume the user is running the API manually.
+    Always return True to skip auto-start logic.
+    """
+    print("ℹ️ Manual Mode: Skipping auto-start check.")
+    return True
