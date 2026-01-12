@@ -34,7 +34,7 @@ def _update_fig_layout(fig, height=500):
         hovermode='x unified',
         hoverlabel=dict(
             bgcolor='rgba(20, 25, 40, 0.95)',
-            bordercolor='rgba(255, 255, 255, 0.1)',
+            bordercolor='rgba(255, 255, 255, 0.3)',
             font_size=13,
             font_family="JetBrains Mono, monospace",
             font_color="#ffffff"
@@ -47,18 +47,20 @@ def _update_fig_layout(fig, height=500):
     fig.update_xaxes(
         showgrid=True, 
         gridwidth=1, 
-        gridcolor='rgba(255, 255, 255, 0.04)', 
+        gridcolor='rgba(255, 255, 255, 0.2)', 
         zeroline=False,
         showline=True,
-        linecolor='rgba(255, 255, 255, 0.1)'
+        linecolor='rgba(255, 255, 255, 0.5)'
     )
     fig.update_yaxes(
         showgrid=True, 
         gridwidth=1, 
-        gridcolor='rgba(255, 255, 255, 0.04)', 
-        zeroline=False,
+        gridcolor='rgba(255, 255, 255, 0.2)', 
+        zeroline=True,
+        zerolinecolor='rgba(255, 255, 255, 0.4)',
         showline=True,
-        linecolor='rgba(255, 255, 255, 0.1)'
+        linecolor='rgba(255, 255, 255, 0.5)',
+        automargin=True
     )
     
     return fig

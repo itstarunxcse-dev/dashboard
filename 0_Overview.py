@@ -1,19 +1,33 @@
 import streamlit as st
 import time
 import sys
+import os
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+# --- 1. CONFIGURATION & SETUP ---
+# Must be the first Streamlit command
+st.set_page_config(
+    page_title="Overview - AI Stock Trading",
+    page_icon="🏠",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# --- PROJECT PATH SETUP ---
+try:
+    project_root = Path(__file__).parent.resolve()
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+except Exception as e:
+    st.error(f"Failed to setup path: {e}")
 
 # --- AUTO-START API SERVER ---
 # This ensures the API is running before the dashboard loads
-try:
-    from utils.api_starter import ensure_api_running
-    
-    # Start API in background (runs once per session)
-    if 'api_started' not in st.session_state:
+if 'api_started' not in st.session_state:
+    try:
+        # Lazy import to avoid issues before path setup
+        from utils.api_starter import ensure_api_running
+        
         with st.spinner('🚀 Starting API server...'):
             api_running = ensure_api_running()
             st.session_state['api_started'] = True
@@ -25,17 +39,9 @@ try:
             else:
                 st.warning('⚠️ API server not available. Some features may be limited.', icon='⚠️')
                 time.sleep(2)
-except Exception as e:
-    st.warning(f'⚠️ Could not start API: {e}', icon='⚠️')
-    st.session_state['api_available'] = False
-
-# --- 1. CONFIGURATION & SETUP ---
-st.set_page_config(
-    page_title="Overview - AI Stock Trading",
-    page_icon="🏠",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+    except Exception as e:
+        st.warning(f'⚠️ Could not start API: {e}', icon='⚠️')
+        st.session_state['api_available'] = False
 
 # --- 2. DATA MODELS (Easy to Edit) ---
 # Centralize data here so you don't hunt through HTML code later
@@ -74,6 +80,7 @@ STATS = [
 ]
 
 # --- 3. STYLING ---
+# --- 3. STYLING ---
 def inject_custom_css():
     st.markdown("""
         <style>
@@ -84,6 +91,11 @@ def inject_custom_css():
             --accent-color: #ffd700;
             --bg-card: rgba(255, 255, 255, 0.05);
             --border-card: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Global Background */
+        .stApp {
+            background: linear-gradient(135deg, #0e1117 0%, #1a1f2e 100%);
         }
 
         /* Animations */
@@ -174,21 +186,6 @@ def render_hero():
             </div>
         </div>
     """, unsafe_allow_html=True)
-    
-    # IMPROVEMENT: Add a Quick Action search bar directly on Home
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        with st.container():
-            query = st.text_input("Stock Ticker", placeholder="🔍 Enter Ticker (e.g., AAPL) to analyze immediately...", label_visibility="collapsed")
-            if query:
-                st.session_state['ticker'] = query.upper()
-                st.toast(f"Redirecting to analysis for {query.upper()}...", icon="🚀")
-                time.sleep(0.5)
-                # Use st.switch_page if dashboard exists, otherwise handle gracefully
-                try:
-                    st.switch_page("pages/1_📊_AI_Signals.py")
-                except:
-                    st.error("Dashboard page not found. Please ensure 'pages/1_📊_AI_Signals.py' exists.")
 
 def render_features():
     st.markdown("### ⚡ Core Capabilities")
@@ -243,6 +240,25 @@ def render_footer():
 
 # --- 5. MAIN EXECUTION ---
 def main():
+    # --- AUTO-START API SERVER ---
+    # Moved inside main to avoid global execution on import
+    if 'api_started' not in st.session_state:
+        try:
+            from utils.api_starter import ensure_api_running
+            with st.spinner('🚀 Starting API server...'):
+                api_running = ensure_api_running()
+                st.session_state['api_started'] = True
+                st.session_state['api_available'] = api_running
+                
+                if api_running:
+                    st.success('✅ API server is ready!', icon='🚀')
+                    time.sleep(0.5)
+                else:
+                    st.warning('⚠️ API server not available.', icon='⚠️')
+        except Exception as e:
+            st.warning(f'⚠️ Could not start API: {e}', icon='⚠️')
+            st.session_state['api_available'] = False
+
     inject_custom_css()
     
     # Show API status in sidebar
@@ -250,7 +266,7 @@ def main():
         st.markdown("### 🔌 System Status")
         if st.session_state.get('api_available', False):
             st.success("API Server: Online", icon="✅")
-            st.caption("http://127.0.0.1:8000")
+            st.caption(os.getenv("SIGNALS_API_URL", "http://127.0.0.1:8000"))
         else:
             st.warning("API Server: Offline", icon="⚠️")
             st.caption("Some features may be limited")

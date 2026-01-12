@@ -47,16 +47,83 @@ def render_prediction_card_stub(signal):
         st.write(signal.reasoning)
 
 # --- Styles ---
+# --- Styles ---
+def inject_glassmorphism_css():
+    st.markdown("""
+        <style>
+        /* Page Background: Black -> Dark Gray/Soft Light */
+        .stApp {
+            background: radial-gradient(circle at 50% 0%, #262626 0%, #000000 100%) !important;
+            background-attachment: fixed;
+        }
+
+        .glass-header {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Shine effect */
+        .glass-header::before {
+            content: "";
+            position: absolute;
+            top: 0; left: -50%; width: 50%; height: 100%;
+            background: linear-gradient(to right, transparent, rgba(255,255,255,0.05), transparent);
+            transform: skewX(-20deg);
+            pointer-events: none;
+        }
+
+        /* Metric/Card Styles */
+        div[data-testid="stMetric"], .metric-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        div[data-testid="stMetric"]:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .glass-header {
+                padding: 18px;
+                margin-bottom: 18px;
+            }
+            div[data-testid="stMetricValue"] {
+                font-size: 22px !important;
+            }
+            .stMainBlockContainer {
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 class Styles:
     HEADER = """
-        <div style="background: #0f172a; border-radius: 16px; padding: 22px; margin-bottom: 22px; border: 1px solid rgba(255,255,255,0.05);">
-            <div style="font-size: 28px; font-weight: 800; color: #e2e8f0;">📊 AI Signals</div>
+        <div class="glass-header">
+            <div style="font-size: 28px; font-weight: 800; color: #f8fafc; letter-spacing: -0.5px; text-shadow: 0 0 20px rgba(255,255,255,0.1);">📊 AI Signals</div>
             <div style="font-size: 14px; color: #94a3b8; margin-top: 6px;">Real-time stock analysis with AI signals</div>
         </div>
     """
 
     METRIC_CARD = """
-        <div style="background: #0b1220; border-radius: 14px; padding: 16px; margin-bottom: 14px; border: 1px solid rgba(255,255,255,0.05);">
+        <div class="metric-card">
             <div style="font-size: 14px; font-weight: 700; color: #cbd5e1; letter-spacing: 0.5px; text-transform: uppercase;">Market Pulse</div>
         </div>
     """
@@ -67,7 +134,7 @@ class Styles:
 def get_ml_engine():
     return MLEngine()
 
-@st.cache_data(ttl=300)
+@st.cache_resource(ttl=300)
 def get_stock_data(symbol: str, period: str, interval: str) -> Optional[StockData]:
     return DataEngine.fetch_data(symbol, period, interval)
 

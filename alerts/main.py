@@ -33,8 +33,9 @@ def clear_all_alerts():
 class AlertRequest(BaseModel):
     user_email: str
     ticker_name: str
-    alert_time: str  # Format: "HH:MM"
+    alert_time: str = None # Format: "HH:MM" for specific time
     alert_date: str = None # Optional: "YYYY-MM-DD" for one-time alerts
+    interval_minutes: int = None # Optional: For recurring interval alerts
 
 # ==========================================
 # 3. CORE FUNCTIONS
@@ -154,31 +155,38 @@ def instant_report(request: InstantReportRequest):
 
 @app.post("/create-alert")
 def create_alert(request: AlertRequest):
-    """Create a new scheduled alert (Daily or One-Time)"""
+    """Create a new scheduled alert (Daily, One-Time, or Interval)"""
     email = request.user_email
     ticker = request.ticker_name
     time_str = request.alert_time
     date_str = request.alert_date
+    interval_mins = request.interval_minutes
     
-    # Create unique ID based on parameters
-    base_id = f"{email}_{ticker}_{time_str.replace(':','')}"
+    # Create unique ID base
+    base_id = f"{email}_{ticker}"
+    if interval_mins:
+        base_id += f"_every_{interval_mins}m"
+    elif time_str:
+        base_id += f"_{time_str.replace(':','')}"
+    
     if date_str:
         base_id += f"_{date_str}"
 
     try:
-        # --- EVERY MINUTE LOOP ---
-        if time_str == "EVERY_MINUTE":
-             job = scheduler.add_job(
+        # --- INTERVAL ALERT ---
+        if interval_mins and interval_mins > 0:
+            job = scheduler.add_job(
                 check_and_alert_job, 
                 'interval', 
-                minutes=1,
+                minutes=interval_mins,
                 id=base_id, 
                 args=[email, ticker], 
                 replace_existing=True
             )
-             msg = f"Alert loop started for {ticker} (Every 1 Minute)"
+            msg = f"Alert scheduled for {ticker} every {interval_mins} minutes"
 
-        else:
+        # --- SPECIFIC TIME ALERT ---
+        elif time_str:
             # Parse time
             try:
                 hour, minute = map(int, time_str.split(':'))
@@ -217,6 +225,9 @@ def create_alert(request: AlertRequest):
                     replace_existing=True
                 )
                 msg = f"Daily alert set for {ticker} at {time_str}"
+        
+        else:
+             raise HTTPException(status_code=400, detail="Must provide unique Alert Time or Interval Minutes.")
 
         next_run = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S") if job.next_run_time else "Finished"
         return {"status": "success", "message": f"{msg}. Next run: {next_run}"}

@@ -49,8 +49,7 @@ from ui.components.metrics import (
     render_metrics,
     render_strategy_config,
     render_signal_logic,
-    render_trade_history,
-    render_confidence
+    render_trade_history
 )
 from ui.components.export import export_data_section
 from data.fetcher import DataEngine
@@ -97,6 +96,15 @@ def fetch_stock_data(symbol: str, period: str, interval: str):
 # HELPERS
 # ======================================================
 def render_header():
+    # Override background to black for high contrast analysis
+    st.markdown("""
+        <style>
+        .stApp {
+            background: radial-gradient(circle at 50% 0%, #1c1c1c 0%, #000000 100%) !important;
+            animation: none !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     st.markdown(HEADER_HTML, unsafe_allow_html=True)
 
 def validate_stock_data(data) -> bool:
@@ -138,7 +146,6 @@ def handle_missing_data():
 def render_backtest(metrics):
     st.markdown("### 📊 Performance Metrics")
     render_metrics(metrics)
-    render_confidence(metrics)
     st.markdown("---")
     st.markdown("### 📈 Equity Curve: Market vs ML Strategy")
     # Main comparison chart with trades and volume-style activity
@@ -200,23 +207,24 @@ def main():
         # Display current loaded stock
         if SessionKeys.STOCK_DATA in st.session_state:
             stock_data = st.session_state[SessionKeys.STOCK_DATA]
-            st.markdown("---")
-            st.markdown(f"""
-                <div class="status-card">
-                    <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-bottom: 5px;">
-                        CURRENTLY LOADED
+            if stock_data:
+                st.markdown("---")
+                st.markdown(f"""
+                    <div class="status-card">
+                        <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-bottom: 5px;">
+                            CURRENTLY LOADED
+                        </div>
+                        <div style="font-size: 24px; font-weight: 800; color: #00ff7f;">
+                            {stock_data.symbol}
+                        </div>
+                        <div style="font-size: 14px; color: rgba(255, 255, 255, 0.8); margin-top: 5px;">
+                            ₹{stock_data.current_price:.2f}
+                        </div>
                     </div>
-                    <div style="font-size: 24px; font-weight: 800; color: #00ff7f;">
-                        {stock_data.symbol}
-                    </div>
-                    <div style="font-size: 14px; color: rgba(255, 255, 255, 0.8); margin-top: 5px;">
-                        ₹{stock_data.current_price:.2f}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
     # ================= MAIN CONTENT =================
-    if SessionKeys.STOCK_DATA not in st.session_state:
+    if SessionKeys.STOCK_DATA not in st.session_state or st.session_state[SessionKeys.STOCK_DATA] is None:
         st.info("👈 Use the sidebar to analyze a stock")
         return
 

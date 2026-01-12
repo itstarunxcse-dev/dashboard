@@ -438,6 +438,48 @@ def load_design_system():
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 12px !important;
         }
+
+        /* --- RESPONSIVE DESIGN --- */
+        @media screen and (max-width: 768px) {
+            /* Adjust Main Container */
+            .stMainBlockContainer {
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+                padding-top: 1rem !important;
+            }
+            
+            /* Typography Scaling */
+            .page-title { font-size: 28px !important; }
+            .section-title { font-size: 18px !important; }
+            .metric-value { font-size: 24px !important; }
+            
+            /* Card Adjustments */
+            .glass-card, .page-header, .sidebar-card, .nav-container {
+                padding: 15px !important;
+                margin-bottom: 15px !important;
+                border-radius: 16px !important;
+            }
+            
+            /* Full Width Elements on Mobile */
+            .stButton>button {
+                width: 100% !important;
+                padding: 12px 15px !important;
+            }
+            
+            /* Metrics Stacking */
+            .metric-box {
+                flex-direction: column;
+                padding: 12px;
+            }
+            
+            /* Nav Items */
+            .nav-item {
+                display: block;
+                margin: 5px 0;
+                text-align: center;
+                width: 100%;
+            }
+        }
         </style>
     """, unsafe_allow_html=True)
 
