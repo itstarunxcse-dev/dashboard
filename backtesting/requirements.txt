@@ -1,8 +1,0 @@
-pydantic
-fastapi
-numpy
-pandas
-fastapi
-uvicorn
-requests
-vectorbt
